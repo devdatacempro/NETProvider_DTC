@@ -1,4 +1,4 @@
-<Project>
+﻿<Project>
 	<!-- Provider -->
 	<PropertyGroup>
 		<ProviderVersion>11.0.0-alpha1</ProviderVersion>
@@ -14,5 +14,8 @@
 		<EF6ProviderVersion>10.1.0</EF6ProviderVersion>
 		<EF6ReferenceProviderVersion>10.3.2</EF6ReferenceProviderVersion>
 		<EF6ReferencePackageVersion>6.5.1</EF6ReferencePackageVersion>
+	</PropertyGroup>
+	<PropertyGroup>
+		<SystemLinqDynamicCore>1.7.1</SystemLinqDynamicCore>
 	</PropertyGroup>
 </Project>

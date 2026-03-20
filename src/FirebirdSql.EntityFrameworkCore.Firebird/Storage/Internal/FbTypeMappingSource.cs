@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using FirebirdSql.Data.FirebirdClient;
+using FirebirdSql.EntityFrameworkCore.Firebird.Infrastructure.Internal;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -38,9 +39,9 @@ public class FbTypeMappingSource : RelationalTypeMappingSource
 	readonly IntTypeMapping _integer = new IntTypeMapping("INTEGER", DbType.Int32);
 	readonly LongTypeMapping _bigint = new LongTypeMapping("BIGINT", DbType.Int64);
 
-	readonly FbStringTypeMapping _char = new FbStringTypeMapping("CHAR", DbType.StringFixedLength, FbDbType.Char);
-	readonly FbStringTypeMapping _varchar = new FbStringTypeMapping("VARCHAR", DbType.String, FbDbType.VarChar);
-	readonly FbStringTypeMapping _clob = new FbStringTypeMapping("BLOB SUB_TYPE TEXT", DbType.String, FbDbType.Text);
+	readonly FbStringTypeMapping _char;
+	readonly FbStringTypeMapping _varchar;
+	readonly FbStringTypeMapping _clob;
 
 	readonly FbByteArrayTypeMapping _binary = new FbByteArrayTypeMapping();
 
@@ -60,10 +61,17 @@ public class FbTypeMappingSource : RelationalTypeMappingSource
 	readonly Dictionary<string, RelationalTypeMapping> _storeTypeMappings;
 	readonly Dictionary<Type, RelationalTypeMapping> _clrTypeMappings;
 	readonly HashSet<string> _disallowedMappings;
+	readonly IFbOptions _fbOptions;
 
-	public FbTypeMappingSource(TypeMappingSourceDependencies dependencies, RelationalTypeMappingSourceDependencies relationalDependencies)
+	public FbTypeMappingSource(TypeMappingSourceDependencies dependencies, RelationalTypeMappingSourceDependencies relationalDependencies, IFbOptions fbOptions)
 		: base(dependencies, relationalDependencies)
 	{
+		_fbOptions = fbOptions;
+		_char = new FbStringTypeMapping("CHAR", DbType.StringFixedLength, FbDbType.Char, unicode: fbOptions.IsUnicode);
+		_varchar = new FbStringTypeMapping("VARCHAR", DbType.String, FbDbType.VarChar, unicode: fbOptions.IsUnicode);
+		_clob = new FbStringTypeMapping("BLOB SUB_TYPE TEXT", DbType.String, FbDbType.Text, unicode: fbOptions.IsUnicode);
+
+
 		_storeTypeMappings = new Dictionary<string, RelationalTypeMapping>(StringComparer.OrdinalIgnoreCase)
 		{
 			{ "BOOLEAN", _boolean },
@@ -111,7 +119,13 @@ public class FbTypeMappingSource : RelationalTypeMappingSource
 
 	protected override RelationalTypeMapping FindMapping(in RelationalTypeMappingInfo mappingInfo)
 	{
-		return FindRawMapping(mappingInfo)?.Clone(mappingInfo) ?? base.FindMapping(mappingInfo);
+		var mapping = FindRawMapping(mappingInfo);
+		if (mapping != null)
+		{
+			var nonUnicodeInfo = mappingInfo with { IsUnicode = _fbOptions.IsUnicode && mapping.IsUnicode == true && mappingInfo.IsUnicode == true };
+			return mapping.Clone(nonUnicodeInfo);
+		}
+		return mapping?.Clone(mappingInfo) ?? base.FindMapping(mappingInfo);
 	}
 
 	protected override void ValidateMapping(CoreTypeMapping mapping, IProperty property)
@@ -134,7 +148,11 @@ public class FbTypeMappingSource : RelationalTypeMappingSource
 		var clrType = mappingInfo.ClrType;
 		var storeTypeName = mappingInfo.StoreTypeName;
 		var storeTypeNameBase = mappingInfo.StoreTypeNameBase;
-		var isUnicode = IsUnicode(mappingInfo.IsUnicode);
+		var isUnicode = IsUnicode(mappingInfo.IsUnicode, _fbOptions);
+		if (isUnicode && !_fbOptions.IsUnicode)
+		{
+			isUnicode = false;
+		}
 
 		if (storeTypeName != null)
 		{
@@ -199,7 +217,7 @@ public class FbTypeMappingSource : RelationalTypeMappingSource
 		return null;
 	}
 
-	public static bool IsUnicode(RelationalTypeMapping mapping) => IsUnicode(mapping?.IsUnicode);
-	public static bool IsUnicode(RelationalTypeMappingInfo mappingInfo) => IsUnicode(mappingInfo.IsUnicode);
-	public static bool IsUnicode(bool? isUnicode) => isUnicode ?? true;
+	public static bool IsUnicode(RelationalTypeMapping mapping, IFbOptions fbOptions) => IsUnicode(mapping?.IsUnicode, fbOptions);
+	public static bool IsUnicode(RelationalTypeMappingInfo mappingInfo, IFbOptions fbOptions) => IsUnicode(mappingInfo.IsUnicode, fbOptions);
+	public static bool IsUnicode(bool? isUnicode, IFbOptions fbOptions) => isUnicode ?? fbOptions.IsUnicode;
 }

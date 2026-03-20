@@ -31,6 +31,8 @@ public class FbOptions : IFbOptions
 
 		ExplicitParameterTypes = fbOptions.ExplicitParameterTypes ?? true;
 		ExplicitStringLiteralTypes = fbOptions.ExplicitStringLiteralTypes ?? true;
+		UseCaseInsensitive = fbOptions.UseCaseInsensitive ?? true;
+		IsUnicode = fbOptions.IsUnicode ?? true;
 	}
 
 	public virtual void Validate(IDbContextOptions options)
@@ -45,8 +47,18 @@ public class FbOptions : IFbOptions
 		{
 			throw new InvalidOperationException($"A call was made to '{nameof(FbDbContextOptionsBuilder.WithExplicitStringLiteralTypes)}' that changed an option that must be constant within a service provider, but Entity Framework is not building its own internal service provider. Either allow EF to build the service provider by removing the call to '{nameof(DbContextOptionsBuilder.UseInternalServiceProvider)}', or ensure that the configuration for '{nameof(FbDbContextOptionsBuilder.WithExplicitStringLiteralTypes)}' does not change for all uses of a given service provider passed to '{nameof(DbContextOptionsBuilder.UseInternalServiceProvider)}'.");
 		}
+		if (UseCaseInsensitive != (fbOptions.UseCaseInsensitive ?? true))
+		{
+			throw new InvalidOperationException($"A call was made to '{nameof(FbDbContextOptionsBuilder.WithUseCaseInsensitive)}' that changed an option that must be constant within a service provider, but Entity Framework is not building its own internal service provider. Either allow EF to build the service provider by removing the call to '{nameof(DbContextOptionsBuilder.UseInternalServiceProvider)}', or ensure that the configuration for '{nameof(FbDbContextOptionsBuilder.WithExplicitStringLiteralTypes)}' does not change for all uses of a given service provider passed to '{nameof(DbContextOptionsBuilder.UseInternalServiceProvider)}'.");
+		}
+		if (IsUnicode != (fbOptions.IsUnicode ?? true))
+		{
+			throw new InvalidOperationException($"A call was made to '{nameof(FbDbContextOptionsBuilder.WithIsUnicode)}' that changed an option that must be constant within a service provider, but Entity Framework is not building its own internal service provider. Either allow EF to build the service provider by removing the call to '{nameof(DbContextOptionsBuilder.UseInternalServiceProvider)}', or ensure that the configuration for '{nameof(FbDbContextOptionsBuilder.WithExplicitStringLiteralTypes)}' does not change for all uses of a given service provider passed to '{nameof(DbContextOptionsBuilder.UseInternalServiceProvider)}'.");
+		}
 	}
 
 	public virtual bool ExplicitParameterTypes { get; private set; }
 	public virtual bool ExplicitStringLiteralTypes { get; private set; }
+	public virtual bool UseCaseInsensitive { get; private set; }
+	public virtual bool IsUnicode { get; private set; }
 }

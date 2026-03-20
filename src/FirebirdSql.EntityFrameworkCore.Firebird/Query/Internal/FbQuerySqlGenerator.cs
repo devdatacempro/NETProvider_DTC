@@ -39,6 +39,32 @@ public class FbQuerySqlGenerator : QuerySqlGenerator
 		_fbOptions = fbOptions;
 	}
 
+	protected override Expression VisitBinary(BinaryExpression binaryExpression)
+	{
+		// Garante parênteses em volta de operações lógicas para manter a precedência do Front-end
+		Sql.Append("(");
+		Visit(binaryExpression.Left);
+
+		var op = binaryExpression.NodeType switch
+		{
+			ExpressionType.AndAlso => " AND ",
+			ExpressionType.OrElse => " OR ",
+			ExpressionType.Equal => " = ",
+			ExpressionType.NotEqual => " <> ",
+			ExpressionType.LessThan => " < ",
+			ExpressionType.GreaterThan => " > ",
+			ExpressionType.LessThanOrEqual => " <= ",
+			ExpressionType.GreaterThanOrEqual => " >= ",
+			_ => base.VisitBinary(binaryExpression) == null ? "" : "" // Fallback padrão
+		};
+
+		Sql.Append(op);
+		Visit(binaryExpression.Right);
+		Sql.Append(")");
+
+		return binaryExpression;
+	}
+
 	protected override Expression VisitSqlUnary(SqlUnaryExpression sqlUnaryExpression)
 	{
 		if (sqlUnaryExpression.OperatorType == ExpressionType.Not && sqlUnaryExpression.TypeMapping.ClrType != typeof(bool))
@@ -143,22 +169,60 @@ public class FbQuerySqlGenerator : QuerySqlGenerator
 			Sql.Append(")");
 			return sqlBinaryExpression;
 		}
+		//else if (sqlBinaryExpression.OperatorType == ExpressionType.AndAlso)
+		//{
+		//	if (sqlBinaryExpression.Left.Type == typeof(bool))
+		//	{
+		//		var left = Sql.Append("UPPER(");
+		//		Visit(sqlBinaryExpression.Left);
+		//		Sql.Append(")");
+
+		//		Sql.Append(GetOperatorType(sqlBinaryExpression.OperatorType));
+
+		//		Sql.Append("UPPER(");
+		//		Visit(sqlBinaryExpression.Right);
+		//		Sql.Append(")");
+
+		//		return sqlBinaryExpression;
+		//	}
+		//	return base.VisitSqlBinary(sqlBinaryExpression);
+		//}
 		else
 		{
 			return base.VisitSqlBinary(sqlBinaryExpression);
 		}
+	}
 
-		void BooleanToIntegralAndVisit(SqlExpression expression)
+	protected override Expression VisitColumn(ColumnExpression columnExpression)
+	{
+		if (columnExpression.Type == typeof(string))
 		{
-			Sql.Append("IIF(");
-			Visit(expression);
-			Sql.Append(", 1, 0)");
+			var isUpper = _fbOptions.UseCaseInsensitive;
+
+			if (isUpper)
+			{
+				Sql.Append("UPPER(");
+			}
+			base.VisitColumn(columnExpression);
+			if (isUpper)
+			{
+				Sql.Append(")");
+			}
+			return columnExpression;
 		}
+		return base.VisitColumn(columnExpression);
 	}
 
 	protected override Expression VisitSqlParameter(SqlParameterExpression sqlParameterExpression)
 	{
+		var isUpper = _fbOptions.UseCaseInsensitive && sqlParameterExpression.Type == typeof(string);
+
 		var shouldExplicitParameterTypes = _fbOptions.ExplicitParameterTypes;
+		if (isUpper)
+		{
+			Sql.Append("UPPER(");
+		}
+
 		if (shouldExplicitParameterTypes)
 		{
 			Sql.Append("CAST(");
@@ -169,13 +233,19 @@ public class FbQuerySqlGenerator : QuerySqlGenerator
 			Sql.Append(" AS ");
 			if (sqlParameterExpression.Type == typeof(string))
 			{
-				var isUnicode = FbTypeMappingSource.IsUnicode(sqlParameterExpression.TypeMapping);
-				Sql.Append(((IFbSqlGenerationHelper)Dependencies.SqlGenerationHelper).StringParameterQueryType(isUnicode));
+				var isUnicode = FbTypeMappingSource.IsUnicode(sqlParameterExpression.TypeMapping, _fbOptions) && _fbOptions.IsUnicode;
+				var storeTypeNameBase = sqlParameterExpression.TypeMapping.StoreTypeNameBase;
+				var size = sqlParameterExpression.TypeMapping.Size ?? 0;
+				Sql.Append(((IFbSqlGenerationHelper)Dependencies.SqlGenerationHelper).StringParameterQueryType(isUnicode, storeTypeNameBase, size));
 			}
 			else
 			{
 				Sql.Append(sqlParameterExpression.TypeMapping.StoreType);
 			}
+			Sql.Append(")");
+		}
+		if (isUpper)
+		{
 			Sql.Append(")");
 		}
 		return sqlParameterExpression;
@@ -191,9 +261,12 @@ public class FbQuerySqlGenerator : QuerySqlGenerator
 		base.VisitSqlConstant(sqlConstantExpression);
 		if (shouldExplicitStringLiteralTypes)
 		{
-			var isUnicode = FbTypeMappingSource.IsUnicode(sqlConstantExpression.TypeMapping);
+			var isUnicode = FbTypeMappingSource.IsUnicode(sqlConstantExpression.TypeMapping, _fbOptions) && _fbOptions.IsUnicode;
+			var storeTypeNameBase = sqlConstantExpression.TypeMapping.StoreTypeNameBase;
+			var size = sqlConstantExpression.TypeMapping.Size ?? 0;
+
 			Sql.Append(" AS ");
-			Sql.Append(((IFbSqlGenerationHelper)Dependencies.SqlGenerationHelper).StringLiteralQueryType(sqlConstantExpression.Value as string, isUnicode));
+			Sql.Append(((IFbSqlGenerationHelper)Dependencies.SqlGenerationHelper).StringLiteralQueryType(sqlConstantExpression.Value as string, isUnicode, storeTypeNameBase, size));
 			Sql.Append(")");
 		}
 		return sqlConstantExpression;
@@ -383,6 +456,88 @@ public class FbQuerySqlGenerator : QuerySqlGenerator
 		};
 	}
 
+	protected override Expression VisitMethodCall(MethodCallExpression methodCallExpression)
+	{
+		var methodName = methodCallExpression.Method.Name;
+
+		// 1. CONTAINS (Já implementado com CONTAINING)
+		if (methodName == "Contains" && methodCallExpression.Method.DeclaringType == typeof(string))
+		{
+			Visit(methodCallExpression.Object);
+			Sql.Append(" CONTAINING ");
+			Visit(methodCallExpression.Arguments[0]);
+			return methodCallExpression;
+		}
+
+		// 2. LIKE -> LIKE '%valor%'
+		if (methodName == "Like" && methodCallExpression.Method.DeclaringType == typeof(string))
+		{
+			// Para Like ser insensitive, forçamos UPPER em ambos os lados.
+			// SQL: UPPER(Campo) LIKE UPPER('%' || 'valor' || '%')
+			Sql.Append("UPPER(");
+			Visit(methodCallExpression.Object ?? methodCallExpression.Arguments[0]);
+			Sql.Append(") LIKE UPPER('%' || ");
+			Visit(methodCallExpression.Arguments.Last());
+			Sql.Append(" || '%')");
+			return methodCallExpression;
+		}
+
+		// 3. STARTSWITH -> LIKE 'valor%'
+		if (methodName == "StartsWith" && methodCallExpression.Method.DeclaringType == typeof(string))
+		{
+			// 'STARTING WITH' é mais performático que LIKE para inícios de string.
+			// SQL: UPPER(Campo) STARTING WITH UPPER('valor')
+			Sql.Append("UPPER(");
+			Visit(methodCallExpression.Object);
+			Sql.Append(") STARTING WITH UPPER(");
+			Visit(methodCallExpression.Arguments[0]);
+			Sql.Append(")");
+			return methodCallExpression;
+		}
+
+		// 4. ENDSWITH -> LIKE '%valor'
+		if (methodName == "EndsWith" && methodCallExpression.Method.DeclaringType == typeof(string))
+		{
+			// SQL: UPPER(Campo) LIKE UPPER('%' || 'valor')
+			Sql.Append("UPPER(");
+			Visit(methodCallExpression.Object);
+			Sql.Append(") LIKE UPPER('%' || ");
+			Visit(methodCallExpression.Arguments[0]);
+			Sql.Append(")");
+			return methodCallExpression;
+		}
+
+		// 5. SelectIN (Assume que o primeiro argumento é a lista e o segundo o valor, ou vice-versa)
+		// Geralmente mapeado de algo como "lista.Contains(item)"
+		if (methodName == "SelectIN" || (methodName == "Contains" && methodCallExpression.Method.DeclaringType != typeof(string)))
+		{
+			// Estrutura: VALOR IN (item1, item2, ...)
+			var column = methodCallExpression.Arguments.Count > 1 ? methodCallExpression.Arguments[1] : methodCallExpression.Arguments[0];
+			var list = methodCallExpression.Arguments.Count > 1 ? methodCallExpression.Arguments[0] : methodCallExpression.Object;
+
+			Visit(column);
+			Sql.Append(" IN (");
+			Visit(list); // O EF Core geralmente expande constantes de lista automaticamente
+			Sql.Append(")");
+			return methodCallExpression;
+		}
+
+		// 6. NotSelectIN
+		if (methodName == "NotSelectIN")
+		{
+			var column = methodCallExpression.Arguments[1];
+			var list = methodCallExpression.Arguments[0];
+
+			Visit(column);
+			Sql.Append(" NOT IN (");
+			Visit(list);
+			Sql.Append(")");
+			return methodCallExpression;
+		}
+
+		return base.VisitMethodCall(methodCallExpression);
+	}
+
 	protected virtual Expression VisitSpacedFunction(FbSpacedFunctionExpression spacedFunctionExpression)
 	{
 		Sql.Append(spacedFunctionExpression.Name);
@@ -412,5 +567,28 @@ public class FbQuerySqlGenerator : QuerySqlGenerator
 
 			generationAction(items[i]);
 		}
+	}
+
+	void BooleanToIntegralAndVisit(SqlExpression expression)
+	{
+		Sql.Append("IIF(");
+		Visit(expression);
+		Sql.Append(", 1, 0)");
+	}
+
+	string GetOperatorType(ExpressionType nodeType)
+	{
+		return nodeType switch
+		{
+			ExpressionType.AndAlso => " AND ",
+			ExpressionType.OrElse => " OR ",
+			ExpressionType.Equal => " = ",
+			ExpressionType.NotEqual => " <> ",
+			ExpressionType.LessThan => " < ",
+			ExpressionType.GreaterThan => " > ",
+			ExpressionType.LessThanOrEqual => " <= ",
+			ExpressionType.GreaterThanOrEqual => " >= ",
+			_ => ""
+		};
 	}
 }

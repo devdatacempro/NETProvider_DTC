@@ -23,4 +23,6 @@ public interface IFbOptions : ISingletonOptions
 {
 	bool ExplicitParameterTypes { get; }
 	bool ExplicitStringLiteralTypes { get; }
+	bool UseCaseInsensitive { get; }
+	bool IsUnicode { get; }
 }

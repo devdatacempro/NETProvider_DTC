@@ -32,4 +32,10 @@ public class FbDbContextOptionsBuilder : RelationalDbContextOptionsBuilder<FbDbC
 
 	public virtual FbDbContextOptionsBuilder WithExplicitStringLiteralTypes(bool explicitStringLiteralTypes = true)
 		=> WithOption(e => e.WithExplicitStringLiteralTypes(explicitStringLiteralTypes));
+
+	public virtual FbDbContextOptionsBuilder WithUseCaseInsensitive(bool useCaseInsensitive = false)
+		=> WithOption(e => e.WithUseCaseInsensitive(useCaseInsensitive));
+
+	public virtual FbDbContextOptionsBuilder WithIsUnicode(bool isUnicode = false)
+		=> WithOption(e => e.WithIsUnicode(isUnicode));
 }

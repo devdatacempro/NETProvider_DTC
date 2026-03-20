@@ -31,11 +31,13 @@
 	</ItemGroup>
 	<ItemGroup>
 		<PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="$(EFCoreReferencePackageVersion)" />
-	</ItemGroup>
-	<ItemGroup Condition="'$(Configuration)'!='Debug'">
-		<PackageReference Include="FirebirdSql.Data.FirebirdClient" Version="$(EFCoreReferenceProviderVersion)" />
+
+		<PackageReference Include="System.Linq.Dynamic.Core" Version="$(SystemLinqDynamicCore)" />
 	</ItemGroup>
 	<ItemGroup Condition="'$(Configuration)'=='Debug'">
+		<PackageReference Include="FirebirdSql.Data.FirebirdClient" Version="$(EFCoreReferenceProviderVersion)" />
+	</ItemGroup>
+	<ItemGroup Condition="'$(Configuration)'!='Debug'">
 		<ProjectReference Include="..\FirebirdSql.Data.FirebirdClient\FirebirdSql.Data.FirebirdClient.csproj" />
 	</ItemGroup>
 </Project>

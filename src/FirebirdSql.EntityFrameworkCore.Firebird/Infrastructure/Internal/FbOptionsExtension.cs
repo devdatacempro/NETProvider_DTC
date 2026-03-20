@@ -28,7 +28,8 @@ public class FbOptionsExtension : RelationalOptionsExtension
 	DbContextOptionsExtensionInfo _info;
 	bool? _explicitParameterTypes;
 	bool? _explicitStringLiteralTypes;
-
+	bool? _useCaseInsensitive;
+	bool? _isUnicode;
 	public FbOptionsExtension()
 	{ }
 
@@ -37,6 +38,8 @@ public class FbOptionsExtension : RelationalOptionsExtension
 	{
 		_explicitParameterTypes = copyFrom._explicitParameterTypes;
 		_explicitStringLiteralTypes = copyFrom._explicitStringLiteralTypes;
+		_useCaseInsensitive = copyFrom._useCaseInsensitive;
+		_isUnicode = copyFrom._isUnicode;
 	}
 
 	protected override RelationalOptionsExtension Clone()
@@ -48,6 +51,8 @@ public class FbOptionsExtension : RelationalOptionsExtension
 	public override DbContextOptionsExtensionInfo Info => _info ??= new ExtensionInfo(this);
 	public virtual bool? ExplicitParameterTypes => _explicitParameterTypes;
 	public virtual bool? ExplicitStringLiteralTypes => _explicitStringLiteralTypes;
+	public virtual bool? UseCaseInsensitive => _useCaseInsensitive;
+	public virtual bool? IsUnicode => _isUnicode;
 
 	public virtual FbOptionsExtension WithExplicitParameterTypes(bool explicitParameterTypes)
 	{
@@ -60,6 +65,20 @@ public class FbOptionsExtension : RelationalOptionsExtension
 	{
 		var clone = (FbOptionsExtension)Clone();
 		clone._explicitStringLiteralTypes = explicitStringLiteralTypes;
+		return clone;
+	}
+
+	public virtual FbOptionsExtension WithUseCaseInsensitive(bool useCaseInsensitive)
+	{
+		var clone = (FbOptionsExtension)Clone();
+		clone._useCaseInsensitive = useCaseInsensitive;
+		return clone;
+	}
+
+	public virtual FbOptionsExtension WithIsUnicode(bool isUnicode)
+	{
+		var clone = (FbOptionsExtension)Clone();
+		clone._isUnicode = isUnicode;
 		return clone;
 	}
 
@@ -78,7 +97,6 @@ public class FbOptionsExtension : RelationalOptionsExtension
 			return _serviceProviderHash ??= HashCode.Combine(base.GetServiceProviderHashCode(), Extension._explicitParameterTypes, Extension._explicitStringLiteralTypes);
 		}
 
-		public override void PopulateDebugInfo(IDictionary<string, string> debugInfo)
-		{ }
+		public override void PopulateDebugInfo(IDictionary<string, string> debugInfo) => debugInfo["FirebirdSQL"] = "1.0";
 	}
 }
